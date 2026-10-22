@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { brandProfile, RULE_CATEGORIES, RULE_SEVERITIES } from "../data/rules";
 import useRules from "../state/useRules";
 import RuleFormModal from "../components/rules/RuleFormModal";
@@ -26,8 +27,10 @@ export default function BrandRulesPage() {
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  const [menuStyle, setMenuStyle] = useState(null);
   const [feedback, setFeedback] = useState("");
   const menuRef = useRef(null);
+  const menuButtonRef = useRef(null);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -79,9 +82,10 @@ export default function BrandRulesPage() {
     }
 
     function onPointerDown(event) {
-      if (!menuRef.current?.contains(event.target)) {
-        setOpenMenu(null);
+      if (menuRef.current?.contains(event.target) || menuButtonRef.current?.contains(event.target)) {
+        return;
       }
+      setOpenMenu(null);
     }
 
     function onKeyDown(event) {
@@ -258,33 +262,37 @@ export default function BrandRulesPage() {
                         </Badge>
                       </td>
                       <td>
-                        <div className="rules-actions" ref={openMenu === rule.id ? menuRef : null}>
+                        <div className="rules-actions">
                           <button
                             className="icon-button"
                             type="button"
                             aria-label={`Actions for ${rule.id}`}
                             aria-haspopup="menu"
                             aria-expanded={openMenu === rule.id}
-                            onClick={() => setOpenMenu((current) => (current === rule.id ? null : rule.id))}
+                            onClick={(event) => {
+                              if (openMenu === rule.id) {
+                                setOpenMenu(null);
+                                return;
+                              }
+
+                              menuButtonRef.current = event.currentTarget;
+                              setMenuStyle(menuPosition(event.currentTarget.getBoundingClientRect()));
+                              setOpenMenu(rule.id);
+                            }}
                           >
                             <Icon name="ellipsis" size={20} />
                           </button>
                           {openMenu === rule.id ? (
-                            <div className="rules-menu" role="menu">
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setEditing(rule);
-                                  setOpenMenu(null);
-                                }}
-                              >
-                                Edit rule
-                              </button>
-                              <button type="button" role="menuitem" onClick={() => toggleActive(rule)}>
-                                {rule.active ? "Mark inactive" : "Mark active"}
-                              </button>
-                            </div>
+                            <RuleActionMenu
+                              menuRef={menuRef}
+                              style={menuStyle}
+                              active={rule.active}
+                              onEdit={() => {
+                                setEditing(rule);
+                                setOpenMenu(null);
+                              }}
+                              onToggle={() => toggleActive(rule)}
+                            />
                           ) : null}
                         </div>
                       </td>
@@ -339,6 +347,31 @@ export default function BrandRulesPage() {
         />
       ) : null}
     </>
+  );
+}
+
+function menuPosition(rect) {
+  const width = 168;
+  const height = 84;
+  const gap = 4;
+  const below = window.innerHeight - rect.bottom;
+  const top = below >= height + gap ? rect.bottom + gap : Math.max(8, rect.top - height - gap);
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+
+  return { top, left, width };
+}
+
+function RuleActionMenu({ menuRef, style, active, onEdit, onToggle }) {
+  return createPortal(
+    <div className="rules-menu" ref={menuRef} role="menu" style={style}>
+      <button type="button" role="menuitem" onClick={onEdit}>
+        Edit rule
+      </button>
+      <button type="button" role="menuitem" onClick={onToggle}>
+        {active ? "Mark inactive" : "Mark active"}
+      </button>
+    </div>,
+    document.body,
   );
 }
 

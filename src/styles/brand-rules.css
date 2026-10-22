@@ -244,10 +244,8 @@
 }
 
 .rules-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 5;
+  position: fixed;
+  z-index: 40;
   min-width: 160px;
   padding: 6px;
   background: var(--surface);
