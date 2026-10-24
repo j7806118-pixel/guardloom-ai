@@ -48,10 +48,10 @@ export default function DashboardPage() {
             <Icon name="files" size={17} />
           </div>
           <p className="metric__value">
-            <strong>0</strong>
+            <strong>—</strong>
             <span>session-only</span>
           </p>
-          <p className="metric__note">SESSION-ONLY DATA</p>
+          <p className="metric__note">NOT PERSISTED</p>
         </article>
 
         <article className="metric">
@@ -60,10 +60,10 @@ export default function DashboardPage() {
             <Icon name="clipboard-list" size={17} />
           </div>
           <p className="metric__value">
-            <strong className="is-emphasis">0</strong>
+            <strong className="is-emphasis">—</strong>
             <span>need a decision</span>
           </p>
-          <p className="metric__note">SESSION-ONLY DATA</p>
+          <p className="metric__note">NOT PERSISTED</p>
         </article>
 
         <article className="metric">
@@ -72,10 +72,10 @@ export default function DashboardPage() {
             <Icon name="user-check" size={17} />
           </div>
           <p className="metric__value">
-            <strong>0</strong>
+            <strong>—</strong>
             <span>recorded human decisions</span>
           </p>
-          <p className="metric__note">SESSION-ONLY DATA</p>
+          <p className="metric__note">NOT PERSISTED</p>
         </article>
 
         <article className="metric">
@@ -96,6 +96,10 @@ export default function DashboardPage() {
           ) : null}
         </article>
       </section>
+
+      <p className="footnote" style={{ marginTop: "12px", marginBottom: "0" }}>
+        Review history and human decisions are not yet saved between sessions.
+      </p>
 
       <Card>
         <div className="section-head">
