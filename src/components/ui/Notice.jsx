@@ -5,8 +5,9 @@ export default function Notice() {
     <div className="notice" role="note">
       <Icon name="info" size={16} />
       <p>
-        <strong>Demonstration data.</strong> All content, statistics, analyses and findings are
-        fictional examples. No live analysis is performed.
+        <strong>AI-assisted analysis.</strong> Findings are generated
+        using AI and may be inaccurate or incomplete. Verify each
+        finding against the selected brand rule before taking action.
       </p>
     </div>
   );

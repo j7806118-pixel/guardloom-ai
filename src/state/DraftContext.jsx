@@ -9,6 +9,7 @@ const initialDraft = {
   selectedRuleIds: sampleDraft.selectedRuleIds,
   source: "sample",
   saved: null,
+  analysis: null,
   notice: null,
 };
 
@@ -59,17 +60,65 @@ export function DraftProvider({ children }) {
           },
         }));
       },
-      requestAnalysis(selectedRuleIds) {
+
+      async requestAnalysis(selectedRuleIds) {
         setDraft((current) => ({
           ...current,
           selectedRuleIds,
           notice: {
-            kind: "analysis",
-            message:
-              "Analysis integration is not connected yet. No AI service was called, and no findings were created.",
+            kind: "loading",
+            message: "Reviewing your draft against the selected brand rules...",
           },
         }));
+
+        try {
+          const response = await fetch("/api/review", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: draft.title,
+              contentType: draft.contentType,
+              content: draft.body,
+              ruleIds: selectedRuleIds,
+            }),
+          });
+
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(
+              result.message || "The AI review could not be completed.",
+            );
+          }
+
+          setDraft((current) => ({
+            ...current,
+            selectedRuleIds,
+            analysis: result,
+            notice: {
+              kind: "analysis-success",
+              message: "AI review completed. Please verify the findings before acting on them.",
+            },
+          }));
+          return result;
+
+        } catch (error) {
+          setDraft((current) => ({
+            ...current,
+            selectedRuleIds,
+            notice: {
+              kind: "analysis-error",
+              message:
+                error.message ||
+                "Could not connect to the AI review service. Please try again.",
+            },
+          }));
+          return null;
+        }
       },
+
       clearNotice() {
         setDraft((current) => ({ ...current, notice: null }));
       },

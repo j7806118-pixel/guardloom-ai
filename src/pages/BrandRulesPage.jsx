@@ -18,7 +18,7 @@ const severityTone = {
 };
 
 export default function BrandRulesPage() {
-  const { rules, addRule, updateRule, setRuleActive } = useRules();
+  const { rules, rulesStatus, rulesError, loadRules, addRule, updateRule, setRuleActive } = useRules();
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
@@ -114,27 +114,30 @@ export default function BrandRulesPage() {
     setPage(1);
   }
 
-  function saveRule(next) {
+  async function saveRule(next) {
     if (editing) {
-      updateRule(editing.id, next);
-      setFeedback(`${next.id} was updated in this demonstration session. It was not saved to a server.`);
+      await updateRule(editing.id, next);
+      setFeedback(`${next.id} was updated.`);
       setEditing(null);
       return;
     }
 
-    addRule(next);
-    setFeedback(`${next.id} was added in this demonstration session. It was not saved to a server.`);
+    await addRule(next);
+    setFeedback(`${next.id} was added.`);
     setAdding(false);
     clearFilters();
   }
 
-  function toggleActive(rule) {
+  async function toggleActive(rule) {
     const active = !rule.active;
-    setRuleActive(rule.id, active);
     setOpenMenu(null);
-    setFeedback(
-      `${rule.id} is now ${active ? "active" : "inactive"} in this demonstration session. It was not saved to a server.`,
-    );
+
+    try {
+      await setRuleActive(rule.id, active);
+      setFeedback(`${rule.id} is now ${active ? "active" : "inactive"}.`);
+    } catch (error) {
+      setFeedback(error.message || `${rule.id} could not be updated.`);
+    }
   }
 
   return (
@@ -217,10 +220,29 @@ export default function BrandRulesPage() {
             }}
             options={[{ value: "all", label: "All severities" }, ...RULE_SEVERITIES.map((item) => ({ value: item, label: item }))]}
           />
-          <p className="rules-filters__count">{rules.length} demonstration rules</p>
+          <p className="rules-filters__count">
+            {rulesStatus === "loading"
+              ? "Loading rules"
+              : rulesStatus === "error"
+                ? "Rules unavailable"
+                : `${rules.length} demonstration rules`}
+          </p>
         </div>
 
-        {pageRows.length === 0 ? (
+        {rulesStatus === "loading" ? (
+          <div className="rules-empty">
+            <h2>Loading rules</h2>
+            <p>Fetching the saved brand rules.</p>
+          </div>
+        ) : rulesStatus === "error" ? (
+          <div className="rules-empty">
+            <h2>Rules could not be loaded</h2>
+            <p>{rulesError}</p>
+            <Button variant="secondary" onClick={() => loadRules()}>
+              Try again
+            </Button>
+          </div>
+        ) : pageRows.length === 0 ? (
           <div className="rules-empty">
             <h2>No demonstration rules match</h2>
             <p>Try another status, category, severity, or search. These filters only change what you see in this session.</p>

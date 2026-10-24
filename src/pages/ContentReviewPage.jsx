@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -10,7 +11,8 @@ import useDraft from "../state/useDraft";
 import useRules from "../state/useRules";
 
 export default function ContentReviewPage() {
-  const { rules } = useRules();
+  const navigate = useNavigate();
+  const { rules, rulesStatus, rulesError } = useRules();
   const { draft, updateDraft, setSelectedRuleIds, loadSample, saveDraft, requestAnalysis, clearNotice } = useDraft();
   const [errors, setErrors] = useState({});
   const editorRef = useRef(null);
@@ -38,17 +40,22 @@ export default function ContentReviewPage() {
     changeSelection(next);
   }
 
-  function submit(action) {
-    const nextErrors = validateDraft(draft);
-    setErrors(nextErrors);
 
-    if (Object.keys(nextErrors).length > 0) {
-      clearNotice();
-      return;
-    }
+async function submit(action) {
+  const nextErrors = validateDraft(draft);
+  setErrors(nextErrors);
 
-    action(selectedIds);
+  if (Object.keys(nextErrors).length > 0) {
+    clearNotice();
+    return;
   }
+
+  const result = await action(selectedIds);
+
+  if (action === requestAnalysis && result) {
+    navigate("/analysis-results");
+  }
+}
 
   function applyWrap(before, after = before) {
     const field = editorRef.current;
@@ -220,7 +227,11 @@ export default function ContentReviewPage() {
               Clear selection
             </button>
           </div>
-          {activeRules.length === 0 ? (
+          {rulesStatus === "loading" ? (
+            <p className="review-rules__empty">Loading rules.</p>
+          ) : rulesStatus === "error" ? (
+            <p className="review-rules__empty">{rulesError}</p>
+          ) : activeRules.length === 0 ? (
             <p className="review-rules__empty">No active rules. Activate a rule on Brand Rules to include it here.</p>
           ) : (
             <ul>
@@ -259,26 +270,51 @@ export default function ContentReviewPage() {
         </Card>
       </div>
 
-      {draft.notice ? (
-        <div className={`review-banner review-banner--${draft.notice.kind}`} role="status">
-          <Icon name={draft.notice.kind === "analysis" ? "info" : "circle-check"} size={18} />
-          <div>
-            {draft.notice.kind === "analysis" ? <strong>Analysis integration is not connected yet</strong> : null}
-            <p>
-              {draft.notice.kind === "analysis"
-                ? "No AI service was called, and no findings were created."
-                : draft.notice.message}
-            </p>
-          </div>
-        </div>
-      ) : null}
+
+{draft.notice ? (
+  <div
+    className={`review-banner review-banner--${draft.notice.kind}`}
+    role="status"
+  >
+    <Icon
+      name={
+        draft.notice.kind === "loading"
+          ? "loader-circle"
+          : draft.notice.kind === "analysis-error"
+            ? "alert-circle"
+            : draft.notice.kind === "analysis-success"
+              ? "circle-check"
+              : "info"
+      }
+      size={18}
+    />
+    <div>
+      <strong>
+        {draft.notice.kind === "loading"
+          ? "Analysis in progress"
+          : draft.notice.kind === "analysis-error"
+            ? "Analysis failed"
+            : draft.notice.kind === "analysis-success"
+              ? "Analysis completed"
+              : draft.notice.kind === "analysis"
+                ? "Analysis integration is not connected yet"
+                : "Notice"}
+      </strong>
+      <p>{draft.notice.message}</p>
+    </div>
+  </div>
+) : null}
+
 
       <Card className="review-actions">
         <div>
           <Icon name="circle-check" size={20} />
           <div>
             <strong>{readiness}</strong>
-            <p>Static demonstration only. Analyze Content does not run a live analysis.</p>
+            <p>
+  AI-assisted review checks your draft against selected brand rules.
+  Verify all findings manually before making decisions.
+</p>
           </div>
         </div>
         <div className="review-actions__buttons">
