@@ -1,16 +1,34 @@
 import { Link } from "react-router-dom";
-import { analyses, categories, metrics, nextReview } from "../data/demo";
+import { analyses, nextReview } from "../data/demo";
+import { RULE_CATEGORIES } from "../data/rules";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import useRules from "../state/useRules";
 
 function findingLabel(count) {
   return count === 1 ? "1 finding" : `${count} findings`;
 }
 
 export default function DashboardPage() {
+  const { rules, rulesStatus, rulesError } = useRules();
+
+  const totalRules = rules.length;
+  const activeRules = rules.filter((rule) => rule.active).length;
+  const inactiveRules = totalRules - activeRules;
+
+  const categoryBreakdown = RULE_CATEGORIES.map((catName) => {
+    const catRules = rules.filter((rule) => rule.category === catName);
+    const catActive = catRules.filter((rule) => rule.active).length;
+    return {
+      name: catName,
+      active: catActive,
+      total: catRules.length,
+    };
+  });
+
   return (
     <>
       <PageHeader
@@ -23,21 +41,65 @@ export default function DashboardPage() {
         }
       />
 
-      <section className="metric-grid" aria-label="Demonstration statistics">
-        {metrics.map((metric) => (
-          <article className="metric" key={metric.id}>
-            <div className="metric__head">
-              <p>{metric.label}</p>
-              <Icon name={metric.icon} size={17} />
-            </div>
-            <p className="metric__value">
-              <strong className={metric.emphasis ? "is-emphasis" : undefined}>{metric.value}</strong>
-              <span>{metric.caption}</span>
-            </p>
-            <p className="metric__note">DEMONSTRATION DATA</p>
-          </article>
-        ))}
+      <section className="metric-grid" aria-label="Workspace metrics">
+        <article className="metric">
+          <div className="metric__head">
+            <p>Content analyses</p>
+            <Icon name="files" size={17} />
+          </div>
+          <p className="metric__value">
+            <strong>—</strong>
+            <span>session-only</span>
+          </p>
+          <p className="metric__note">NOT PERSISTED</p>
+        </article>
+
+        <article className="metric">
+          <div className="metric__head">
+            <p>Awaiting human review</p>
+            <Icon name="clipboard-list" size={17} />
+          </div>
+          <p className="metric__value">
+            <strong className="is-emphasis">—</strong>
+            <span>need a decision</span>
+          </p>
+          <p className="metric__note">NOT PERSISTED</p>
+        </article>
+
+        <article className="metric">
+          <div className="metric__head">
+            <p>Reviewed by your team</p>
+            <Icon name="user-check" size={17} />
+          </div>
+          <p className="metric__value">
+            <strong>—</strong>
+            <span>recorded human decisions</span>
+          </p>
+          <p className="metric__note">NOT PERSISTED</p>
+        </article>
+
+        <article className="metric">
+          <div className="metric__head">
+            <p>Active brand rules</p>
+            <Icon name="book-open" size={17} />
+          </div>
+          <p className="metric__value">
+            <strong>{rulesStatus === "loading" ? "..." : activeRules}</strong>
+            <span>
+              {rulesStatus === "loading"
+                ? "loading rules..."
+                : `of ${totalRules} total ${totalRules === 1 ? "rule" : "rules"}`}
+            </span>
+          </p>
+          {rulesStatus === "error" ? (
+            <p className="metric__note">{rulesError}</p>
+          ) : null}
+        </article>
       </section>
+
+      <p className="footnote" style={{ marginTop: "12px", marginBottom: "0" }}>
+        Review history and human decisions are not yet saved between sessions.
+      </p>
 
       <Card>
         <div className="section-head">
@@ -115,15 +177,23 @@ export default function DashboardPage() {
               Manage rules →
             </Link>
           </div>
-          <p className="panel__summary">5 active rules across 3 categories · Demonstration statistics</p>
+          <p className="panel__summary">
+            {rulesStatus === "loading"
+              ? "Loading rules..."
+              : `${activeRules} active ${activeRules === 1 ? "rule" : "rules"}` +
+                (inactiveRules > 0 ? ` (${inactiveRules} inactive)` : "") +
+                ` across ${RULE_CATEGORIES.length} categories`}
+          </p>
           <div className="category-grid">
-            {categories.map((category) => (
+            {categoryBreakdown.map((category) => (
               <div className="category" key={category.name}>
                 <p className="category__name">{category.name}</p>
                 <div className="track" aria-hidden="true">
                   <span
                     className="track__fill"
-                    style={{ width: `${(category.active / category.total) * 100}%` }}
+                    style={{
+                      width: `${category.total > 0 ? (category.active / category.total) * 100 : 0}%`,
+                    }}
                   />
                 </div>
                 <p className="category__count">
