@@ -5,6 +5,7 @@ import express from "express";
 import mongoose from "mongoose";
 import rulesRouter from "./routes/rules.js";
 import reviewRouter from "./routes/review.js";
+import reviewsRouter from "./routes/reviews.js";
 import { seedBrandRules } from "./seedBrandRules.js";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,6 +22,7 @@ app.get("/api/health", (_request, response) => {
 
 app.use("/api/rules", rulesRouter);
 app.use("/api/review", reviewRouter);
+app.use("/api/reviews", reviewsRouter);
 
 app.use((error, _request, response, _next) => {
   if (error instanceof SyntaxError && error.status === 400) {

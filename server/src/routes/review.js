@@ -1,6 +1,7 @@
 ﻿import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import BrandRule from "../models/BrandRule.js";
+import { runPrechecker } from "../services/prechecker.js";
 
 const router = Router();
 
@@ -196,8 +197,20 @@ ${JSON.stringify(content)}
         status: response.status,
       });
       logGeminiUpstreamFailure(response.status, errorBody);
-      const client = clientMessageForGeminiFailure(response.status, errorBody);
-      return res.status(client.httpStatus).json({ message: client.message });
+
+      // Fallback to rule-only deterministic review on provider/quota/rate-limit error
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-provider-error", requestId, { status: response.status, findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI service unavailable (HTTP ${response.status}). Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI service unavailable (HTTP ${response.status}). Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
+      });
     }
 
     const data = await response.json();
@@ -206,8 +219,17 @@ ${JSON.stringify(content)}
       .join("");
 
     if (!generatedText) {
-      return res.status(502).json({
-        message: "The AI service returned no review results. Please try again.",
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-empty-text", requestId, { findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI service returned empty response. Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI service returned empty response. Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
       });
     }
 
@@ -216,8 +238,17 @@ ${JSON.stringify(content)}
     try {
       result = JSON.parse(generatedText);
     } catch {
-      return res.status(502).json({
-        message: "The AI service returned an unreadable result. Please try again.",
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-json-parse-error", requestId, { findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI service returned unreadable result. Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI service returned unreadable result. Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
       });
     }
 
@@ -226,15 +257,26 @@ ${JSON.stringify(content)}
       typeof result.summary !== "string" ||
       !Array.isArray(result.findings)
     ) {
-      return res.status(502).json({
-        message: "The AI service returned an invalid review format.",
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-invalid-format", requestId, { findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI service returned invalid format. Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI service returned invalid format. Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
       });
     }
+
+    const deterministicFindings = runPrechecker(rules, content);
 
     const allowedIds = new Set(rules.map((rule) => rule.id));
     const validSeverities = new Set(["Low", "Medium", "High", "Critical"]);
 
-    const findings = result.findings
+    const aiFindings = result.findings
       .filter((finding) =>
         finding &&
         allowedIds.has(finding.ruleId) &&
@@ -253,14 +295,31 @@ ${JSON.stringify(content)}
         suggestedFix: finding.suggestedFix,
       }));
 
+    // Combine deterministic and AI findings
+    // Prioritize deterministic findings for the same rule and same evidence
+    const combinedFindings = [...deterministicFindings];
+    const detSet = new Set(deterministicFindings.map(f => `${f.ruleId}:${f.evidence.toLowerCase()}`));
+
+    for (const aiF of aiFindings) {
+      const key = `${aiF.ruleId}:${aiF.evidence.toLowerCase()}`;
+      if (!detSet.has(key)) {
+        combinedFindings.push({
+          ...aiF,
+          source: "ai"
+        });
+      }
+    }
+
     logReview("complete", requestId, {
       elapsedMs: Date.now() - startedAt,
-      findings: findings.length,
+      deterministic: deterministicFindings.length,
+      ai: aiFindings.length,
+      total: combinedFindings.length,
     });
 
     return res.json({
       summary: result.summary.slice(0, 1500),
-      findings,
+      findings: combinedFindings,
       model: GEMINI_MODEL,
       reviewedAt: new Date().toISOString(),
       humanReviewRequired: true,
@@ -272,9 +331,19 @@ ${JSON.stringify(content)}
         limitMs: GEMINI_TIMEOUT_MS,
         error: error.name,
       });
-      return res.status(504).json({
-        message:
-          "The AI service did not respond in time. This often happens when the Gemini API quota is exhausted or the service is temporarily unavailable.",
+
+      // Fallback to rule-only deterministic review on timeout
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-timeout", requestId, { findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI service timed out. Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI service timed out. Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
       });
     }
 
@@ -284,9 +353,26 @@ ${JSON.stringify(content)}
     });
     console.error("Content review failed:", error?.name ?? "UnknownError");
 
-    return res.status(500).json({
-      message: "The review could not be completed. Please try again.",
-    });
+    // Fallback on general unexpected error
+    try {
+      const fallbackFindings = runPrechecker(rules, content);
+      logReview("fallback-generic-error", requestId, { findings: fallbackFindings.length });
+      return res.json({
+        summary: fallbackFindings.length > 0
+          ? `AI review error occurred. Rule-only fallback completed with ${fallbackFindings.length} potential violation(s) detected.`
+          : `AI review error occurred. Rule-only fallback completed with no deterministic violations detected across ${rules.length} active rule(s).`,
+        findings: fallbackFindings,
+        model: `${GEMINI_MODEL}-fallback`,
+        reviewedAt: new Date().toISOString(),
+        humanReviewRequired: true,
+        reviewMode: "rule-only",
+      });
+    } catch (fallbackError) {
+      logReview("fallback-failed", requestId, { error: fallbackError?.name ?? "Unknown" });
+      return res.status(500).json({
+        message: "The review could not be completed. Please try again.",
+      });
+    }
   }
 });
 
