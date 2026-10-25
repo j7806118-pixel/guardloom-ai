@@ -10,6 +10,8 @@ const initialDraft = {
   source: "sample",
   saved: null,
   analysis: null,
+  reviewId: null,
+  persistenceError: null,
   notice: null,
 };
 
@@ -102,6 +104,67 @@ export function DraftProvider({ children }) {
               message: "AI review completed. Please verify the findings before acting on them.",
             },
           }));
+
+          // Persist the review to MongoDB
+          try {
+            const persistRes = await fetch("/api/reviews", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: draft.title,
+                contentType: draft.contentType,
+                content: draft.body,
+                ruleIds: selectedRuleIds,
+                findings: result.findings,
+                summary: result.summary,
+                reviewedAt: result.reviewedAt || new Date().toISOString(),
+                reviewMode: result.reviewMode,
+              }),
+            });
+
+            let persistData = {};
+            const contentTypeHeader = persistRes.headers.get("content-type");
+            if (contentTypeHeader && contentTypeHeader.includes("application/json")) {
+              persistData = await persistRes.json().catch(() => ({}));
+            } else {
+              const text = await persistRes.text().catch(() => "");
+              persistData = { message: text || persistRes.statusText };
+            }
+            if (persistRes.ok && (persistData._id || persistData.id)) {
+              const savedReviewId = persistData._id || persistData.id;
+              sessionStorage.setItem("currentReviewId", savedReviewId);
+              setDraft((current) => ({
+                ...current,
+                reviewId: savedReviewId,
+                persistenceError: null,
+              }));
+            } else {
+              let rawText = "";
+              try {
+                rawText = await persistRes.text();
+              } catch {}
+              console.error("Failed to persist review record:", persistRes.status, persistRes.statusText, rawText);
+              setDraft((current) => ({
+                ...current,
+                persistenceError: "Could not save the review. Check that the backend is running and try again.",
+                notice: {
+                  kind: "analysis-success",
+                  message: "AI review completed, but saving the persistent record failed. You can still view and retry saving.",
+                },
+              }));
+            }
+          } catch (persistErr) {
+            console.error("Persistence network error:", persistErr);
+            setDraft((current) => ({
+              ...current,
+              persistenceError: "Could not save the review. Check that the backend is running and try again.",
+              notice: {
+                kind: "analysis-success",
+                message: "AI review completed, but database persistence failed. You can still view results.",
+              },
+            }));
+          }
+
           return result;
 
         } catch (error) {
@@ -121,6 +184,69 @@ export function DraftProvider({ children }) {
 
       clearNotice() {
         setDraft((current) => ({ ...current, notice: null }));
+      },
+
+      async retrySave() {
+        if (!draft.analysis) return;
+        try {
+          const persistRes = await fetch("/api/reviews", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: draft.title,
+              contentType: draft.contentType,
+              content: draft.body,
+              ruleIds: draft.selectedRuleIds,
+              findings: draft.analysis.findings,
+              summary: draft.analysis.summary,
+              reviewedAt: draft.analysis.reviewedAt || new Date().toISOString(),
+              reviewMode: draft.analysis.reviewMode,
+            }),
+          });
+
+          let persistData = {};
+          const contentTypeHeader = persistRes.headers.get("content-type");
+          if (contentTypeHeader && contentTypeHeader.includes("application/json")) {
+            persistData = await persistRes.json().catch(() => ({}));
+          } else {
+            const text = await persistRes.text().catch(() => "");
+            persistData = { message: text || persistRes.statusText };
+          }
+
+          if (persistRes.ok && (persistData._id || persistData.id)) {
+            const savedReviewId = persistData._id || persistData.id;
+            sessionStorage.setItem("currentReviewId", savedReviewId);
+            setDraft((current) => ({
+              ...current,
+              reviewId: savedReviewId,
+              persistenceError: null,
+              notice: {
+                kind: "saved",
+                message: "Review successfully persisted to database.",
+              },
+            }));
+          }else {
+            let rawText = "";
+            try {
+              rawText = await persistRes.text();
+            } catch {}
+            console.error("Persistence retry failed:", persistRes.status, persistRes.statusText, rawText);
+            setDraft((current) => ({
+              ...current,
+              persistenceError: "Could not save the review. Check that the backend is running and try again.",
+            }));
+          }
+        } catch (err) {
+          console.error("Persistence retry network error:", err);
+          setDraft((current) => ({
+            ...current,
+            persistenceError: "Could not save the review. Check that the backend is running and try again.",
+            notice: {
+              kind: "analysis-error",
+              message: "Network error while trying to save review.",
+            },
+          }));
+        }
       },
     }),
     [draft],
