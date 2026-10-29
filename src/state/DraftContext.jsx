@@ -63,6 +63,75 @@ export function DraftProvider({ children }) {
         }));
       },
 
+      async updateFindingDecision(reviewId, findingId, decision, revisedText) {
+        if (!reviewId || !findingId) {
+          throw new Error("Review ID and Finding ID are required.");
+        }
+
+        const res = await fetch(
+          `/api/reviews/${encodeURIComponent(reviewId)}/findings/${encodeURIComponent(findingId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ decision, revisedText }),
+          }
+        );
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || "Failed to save finding decision.");
+        }
+
+        const updatedReview = await res.json();
+        setDraft((current) => {
+          if (!current.analysis) return current;
+          return {
+            ...current,
+            reviewId: updatedReview._id || current.reviewId,
+            analysis: {
+              ...current.analysis,
+              findings: updatedReview.findings,
+              status: updatedReview.status,
+            },
+          };
+        });
+        return updatedReview;
+      },
+
+      async updateReviewStatus(reviewId, status) {
+        if (!reviewId) {
+          throw new Error("Review ID is required.");
+        }
+
+        const res = await fetch(
+          `/api/reviews/${encodeURIComponent(reviewId)}/status`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          }
+        );
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || "Failed to save review status.");
+        }
+
+        const updatedReview = await res.json();
+        setDraft((current) => {
+          if (!current.analysis) return current;
+          return {
+            ...current,
+            reviewId: updatedReview._id || current.reviewId,
+            analysis: {
+              ...current.analysis,
+              status: updatedReview.status,
+            },
+          };
+        });
+        return updatedReview;
+      },
+
       async requestAnalysis(selectedRuleIds) {
         setDraft((current) => ({
           ...current,
@@ -136,6 +205,7 @@ export function DraftProvider({ children }) {
               setDraft((current) => ({
                 ...current,
                 reviewId: savedReviewId,
+                analysis: persistData,
                 persistenceError: null,
               }));
             } else {
@@ -219,6 +289,7 @@ export function DraftProvider({ children }) {
             setDraft((current) => ({
               ...current,
               reviewId: savedReviewId,
+              analysis: persistData,
               persistenceError: null,
               notice: {
                 kind: "saved",

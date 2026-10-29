@@ -8,12 +8,22 @@ import PageHeader from "../components/ui/PageHeader";
 import useDraft from "../state/useDraft";
 import "../styles/analysis-results.css";
 
+import CorrectedContentPreview from "../components/CorrectedContentPreview";
 export default function AnalysisResultsPage() {
-  const { draft, retrySave } = useDraft();
+  const {
+    draft,
+    updateFindingDecision,
+    updateReviewStatus,
+    retrySave,
+  } = useDraft();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [restoredAnalysis, setRestoredAnalysis] = useState(null);
-  const [restoredDraft, setRestoredDraft] = useState(null);
+  const [updating, setUpdating] = useState({});
+  const [editingFindingId, setEditingFindingId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [editError, setEditError] = useState("");
 
   useEffect(() => {
     if (draft.analysis) return;
@@ -31,7 +41,7 @@ export default function AnalysisResultsPage() {
       })
       .then((data) => {
         if (cancelled) return;
-        setRestoredDraft(data);
+
         setRestoredAnalysis({
           ...data,
           findings: data.findings || [],
@@ -52,7 +62,93 @@ export default function AnalysisResultsPage() {
   }, [draft.analysis]);
 
   const analysis = draft.analysis || restoredAnalysis;
-  const displayDraft = draft.analysis ? draft : restoredDraft || {};
+  const reviewId =
+    draft.reviewId ||
+    analysis?._id ||
+    analysis?.id ||
+    sessionStorage.getItem("currentReviewId");
+
+  async function handleDecision(findingId, decision, revisedText = undefined) {
+    if (!reviewId || !findingId) {
+      setEditError(
+        decision === "edited"
+          ? "Review ID or finding ID is missing."
+          : ""
+      );
+
+      if (decision !== "edited") {
+        alert("Review ID or finding ID is missing.");
+      }
+
+      return;
+    }
+
+    setUpdating((prev) => ({ ...prev, [findingId]: true }));
+
+    try {
+      const updatedReview = await updateFindingDecision(
+        reviewId,
+        findingId,
+        decision,
+        revisedText
+      );
+
+      const normalizedReview = {
+        ...updatedReview,
+        findings: updatedReview.findings || [],
+        summary: updatedReview.summary || "",
+        reviewedAt: updatedReview.reviewedAt || null,
+      };
+
+      // Keep the restored view synchronized when the analysis was loaded
+      // from the saved review record.
+      if (restoredAnalysis || !draft.analysis) {
+        setRestoredAnalysis(normalizedReview);
+      }
+
+      if (decision === "edited") {
+        setEditingFindingId(null);
+        setEditText("");
+        setEditError("");
+      }
+    } catch (err) {
+      if (decision === "edited") {
+        setEditError(err.message || "Failed to save revised text.");
+      } else {
+        alert(err.message || "Failed to update finding.");
+      }
+    } finally {
+      setUpdating((prev) => ({ ...prev, [findingId]: false }));
+    }
+  }
+
+  async function handleStatusChange(status) {
+    if (!reviewId) {
+      alert("Review ID is missing.");
+      return;
+    }
+
+    setUpdating((prev) => ({ ...prev, status: true }));
+
+    try {
+      const updatedReview = await updateReviewStatus(reviewId, status);
+
+      const normalizedReview = {
+        ...updatedReview,
+        findings: updatedReview.findings || [],
+        summary: updatedReview.summary || "",
+        reviewedAt: updatedReview.reviewedAt || null,
+      };
+
+      if (restoredAnalysis || !draft.analysis) {
+        setRestoredAnalysis(normalizedReview);
+      }
+    } catch (err) {
+      alert(err.message || "Failed to update review status.");
+    } finally {
+      setUpdating((prev) => ({ ...prev, status: false }));
+    }
+  }
 
   if (loading) {
     return (
@@ -111,12 +207,45 @@ export default function AnalysisResultsPage() {
   return (
     <>
       <PageHeader
-        title={`${displayDraft.title || "Untitled draft"}`}
+        title={analysis.title || "Untitled draft"}
         description="AI-assisted brand review"
         actions={
-          <Button to="/content-review" variant="secondary" icon="arrow-left">
-            Back to Content Review
-          </Button>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "14px",
+                fontWeight: 500,
+              }}
+            >
+              Review Status:
+              <select
+                value={analysis.status || "pending"}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                disabled={updating.status}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <option value="pending">Pending</option>
+                <option value="changes-requested">Changes Requested</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+
+            <Button
+              to="/content-review"
+              variant="secondary"
+              icon="arrow-left"
+            >
+              Back to Content Review
+            </Button>
+          </div>
         }
       />
 
@@ -140,21 +269,24 @@ export default function AnalysisResultsPage() {
             <p style={{ margin: 0, fontWeight: 500 }}>
               Persistence warning: {draft.persistenceError}
             </p>
-            <button
-              onClick={retrySave}
-              style={{
-                marginTop: "0.5rem",
-                padding: "0.25rem 0.75rem",
-                background: "#dc2626",
-                color: "#fff",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "0.875rem",
-              }}
-            >
-              Retry Saving Review
-            </button>
+
+            {typeof retrySave === "function" && (
+              <button
+                onClick={retrySave}
+                style={{
+                  marginTop: "0.5rem",
+                  padding: "0.25rem 0.75rem",
+                  background: "#dc2626",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "0.875rem",
+                }}
+              >
+                Retry Saving Review
+              </button>
+            )}
           </div>
         )}
 
@@ -177,6 +309,11 @@ export default function AnalysisResultsPage() {
         </p>
       </Card>
 
+      <CorrectedContentPreview
+        originalContent={draft.body || analysis.content || ""}
+        findings={analysis.findings || []}
+      />
+
       <section
         className="analysis-findings"
         aria-labelledby="findings-heading"
@@ -195,44 +332,242 @@ export default function AnalysisResultsPage() {
             </p>
           </Card>
         ) : (
-          analysis.findings.map((finding, index) => (
-            <Card
-              className="analysis-finding"
-              padded
-              key={`${finding.ruleId}-${index}`}
-            >
-              <div className="analysis-finding__top">
-                <div>
-                  <span className="analysis-finding__rule">
-                    Rule ID: {finding.ruleId}
-                  </span>
-                  <h3>{finding.explanation}</h3>
+          analysis.findings.map((finding) => {
+            // Define these inside the map callback so each card uses
+            // its own ID and editing state.
+            const findingId =
+              finding._id || finding.id || finding.ruleId;
+
+            const isEditing =
+              String(editingFindingId) === String(findingId);
+
+            return (
+              <Card
+                className="analysis-finding"
+                padded
+                key={finding._id || finding.id || finding.ruleId}
+              >
+                <div className="analysis-finding__top">
+                  <div>
+                    <span className="analysis-finding__rule">
+                      Rule ID: {finding.ruleId}
+                    </span>
+                    <h3>{finding.explanation}</h3>
+                  </div>
+
+                  <Badge
+                    tone={
+                      ["High", "Critical"].includes(finding.severity)
+                        ? "high"
+                        : finding.severity === "Medium"
+                          ? "medium"
+                          : "low"
+                    }
+                  >
+                    {finding.severity} severity
+                  </Badge>
                 </div>
 
-                <Badge
-                  tone={
-                    ["High", "Critical"].includes(finding.severity)
-                      ? "high"
-                      : finding.severity === "Medium"
-                        ? "medium"
-                        : "low"
-                  }
+                <div className="analysis-finding__section">
+                  <h4>Evidence from your draft</h4>
+                  <blockquote>{finding.evidence}</blockquote>
+                </div>
+
+                <div className="analysis-finding__section">
+                  <h4>Suggested fix</h4>
+                  <p>{finding.suggestedFix}</p>
+                </div>
+
+                {isEditing && (
+                  <div
+                    className="analysis-finding__section"
+                    style={{
+                      background: "var(--surface)",
+                      padding: "12px",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        marginBottom: "6px",
+                      }}
+                    >
+                      Edit revised text:
+                    </label>
+
+                    <textarea
+                      value={editText}
+                      onChange={(e) => {
+                        setEditText(e.target.value);
+                        if (editError) setEditError("");
+                      }}
+                      rows={3}
+                      disabled={Boolean(updating[findingId])}
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        borderRadius: "4px",
+                        border: "1px solid var(--border)",
+                        fontFamily: "inherit",
+                        fontSize: "14px",
+                        resize: "vertical",
+                      }}
+                    />
+
+                    {editError && (
+                      <p
+                        role="alert"
+                        style={{
+                          color: "#991b1b",
+                          fontSize: "13px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        {editError}
+                      </p>
+                    )}
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => {
+                          if (!editText.trim()) {
+                            setEditError("Revised text cannot be blank.");
+                            return;
+                          }
+
+                          handleDecision(
+                            findingId,
+                            "edited",
+                            editText.trim()
+                          );
+                        }}
+                        disabled={Boolean(updating[findingId])}
+                      >
+                        {updating[findingId] ? "Saving..." : "Save Changes"}
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setEditingFindingId(null);
+                          setEditText("");
+                          setEditError("");
+                        }}
+                        disabled={Boolean(updating[findingId])}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  className="analysis-finding__section"
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    paddingTop: "14px",
+                    marginTop: "14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                  }}
                 >
-                  {finding.severity} severity
-                </Badge>
-              </div>
+                  <div>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "var(--ink-muted)",
+                      }}
+                    >
+                      Decision:{" "}
+                      <span
+                        style={{
+                          textTransform: "capitalize",
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {finding.decision || "pending"}
+                      </span>
+                    </span>
 
-              <div className="analysis-finding__section">
-                <h4>Evidence from your draft</h4>
-                <blockquote>{finding.evidence}</blockquote>
-              </div>
+                    {finding.revisedText && (
+                      <div style={{ marginTop: "8px" }}>
+                        <strong>Revised text:</strong>
+                        <p>{finding.revisedText}</p>
+                      </div>
+                    )}
+                  </div>
 
-              <div className="analysis-finding__section">
-                <h4>Suggested fix</h4>
-                <p>{finding.suggestedFix}</p>
-              </div>
-            </Card>
-          ))
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <Button
+                      size="sm"
+                      variant={
+                        finding.decision === "accepted"
+                          ? "primary"
+                          : "secondary"
+                      }
+                      onClick={() =>
+                        handleDecision(findingId, "accepted")
+                      }
+                      disabled={Boolean(updating[findingId])}
+                    >
+                      Accept
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={
+                        finding.decision === "edited"
+                          ? "primary"
+                          : "secondary"
+                      }
+                      onClick={() => {
+                        setEditingFindingId(findingId);
+                        setEditText(
+                          finding.revisedText || finding.suggestedFix || ""
+                        );
+                        setEditError("");
+                      }}
+                      disabled={Boolean(updating[findingId])}
+                    >
+                      Edit
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={
+                        finding.decision === "dismissed"
+                          ? "primary"
+                          : "secondary"
+                      }
+                      onClick={() =>
+                        handleDecision(findingId, "dismissed")
+                      }
+                      disabled={Boolean(updating[findingId])}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })
         )}
       </section>
 

@@ -2,6 +2,7 @@
 import { Router } from "express";
 import BrandRule from "../models/BrandRule.js";
 import { runPrechecker } from "../services/prechecker.js";
+import { verifyAiFinding } from "../services/aiVerifier.js";
 
 const router = Router();
 
@@ -274,19 +275,9 @@ ${JSON.stringify(content)}
     const deterministicFindings = runPrechecker(rules, content);
 
     const allowedIds = new Set(rules.map((rule) => rule.id));
-    const validSeverities = new Set(["Low", "Medium", "High", "Critical"]);
 
     const aiFindings = result.findings
-      .filter((finding) =>
-        finding &&
-        allowedIds.has(finding.ruleId) &&
-        validSeverities.has(finding.severity) &&
-        typeof finding.evidence === "string" &&
-        finding.evidence.length > 0 &&
-        content.includes(finding.evidence) &&
-        typeof finding.explanation === "string" &&
-        typeof finding.suggestedFix === "string"
-      )
+      .filter((finding) => verifyAiFinding(finding, content, allowedIds))
       .map((finding) => ({
         ruleId: finding.ruleId,
         severity: finding.severity,
