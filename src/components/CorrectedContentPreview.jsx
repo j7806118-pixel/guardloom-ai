@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -11,14 +12,16 @@ export default function CorrectedContentPreview({
 
   const { correctedText, warning } = computeCorrectedContent(
     originalContent,
-    findings,
+    findings
   );
 
-  const hasFindings = Array.isArray(findings) && findings.length > 0;
+  const hasFindings =
+    Array.isArray(findings) && findings.length > 0;
+
   const pendingCount = hasFindings
     ? findings.filter(
         (finding) =>
-          !finding.decision || finding.decision === "pending",
+          !finding.decision || finding.decision === "pending"
       ).length
     : 0;
 
