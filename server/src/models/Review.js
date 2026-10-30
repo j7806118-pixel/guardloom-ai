@@ -7,6 +7,7 @@ const findingSchema = new mongoose.Schema({
   explanation: { type: String, required: true },
   suggestedFix: { type: String, required: true },
   source: { type: String },
+  offset: { type: Number },
   decision: {
     type: String,
     enum: ["pending", "accepted", "edited", "dismissed"],
