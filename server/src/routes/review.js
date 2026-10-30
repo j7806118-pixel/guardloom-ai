@@ -139,7 +139,7 @@ Return only valid JSON with this structure:
       "severity": "Low, Medium, High, or Critical",
       "evidence": "An exact short quotation copied from the draft",
       "explanation": "Why this quotation conflicts with the rule",
-      "suggestedFix": "A practical suggested revision"
+      "suggestedFix": "The actual replacement text. If the evidence should be removed, use an empty string. Do not include instructions or explanations."
     }
   ]
 }
@@ -278,13 +278,25 @@ ${JSON.stringify(content)}
 
     const aiFindings = result.findings
       .filter((finding) => verifyAiFinding(finding, content, allowedIds))
-      .map((finding) => ({
-        ruleId: finding.ruleId,
-        severity: finding.severity,
-        evidence: finding.evidence,
-        explanation: finding.explanation,
-        suggestedFix: finding.suggestedFix,
-      }));
+      .map((finding) => {
+        let offset;
+        if (typeof finding.evidence === "string") {
+          const escaped = finding.evidence.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(escaped, "gi");
+          const matches = [...content.matchAll(regex)];
+          if (matches.length === 1) {
+            offset = matches[0].index;
+          }
+        }
+        return {
+          ruleId: finding.ruleId,
+          severity: finding.severity,
+          evidence: finding.evidence,
+          explanation: finding.explanation,
+          suggestedFix: finding.suggestedFix,
+          offset,
+        };
+      });
 
     // Combine deterministic and AI findings
     // Prioritize deterministic findings for the same rule and same evidence

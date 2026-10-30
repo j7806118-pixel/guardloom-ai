@@ -104,6 +104,56 @@ function testCorrectedContentPreview() {
   const res7 = computeCorrectedContent(ambiguousDraft, findings7);
   assert.equal(res7.correctedText, ambiguousDraft);
   assert.ok(res7.warning.includes("Ambiguous evidence span"));
+
+  // Test 8: Sentence-level replacement without duplication
+  const sentenceDraft = "Aster Works helps you coordinate your team so you can spend less time coordinating and more time doing.";
+  const findings8 = [
+    {
+      ruleId: "AW-001",
+      evidence: "coordinating",
+      offset: 78,
+      suggestedFix: "Aster Works helps you coordinate your team so you can spend less time organizing and more time doing.",
+      decision: "accepted"
+    }
+  ];
+  const res8 = computeCorrectedContent(sentenceDraft, findings8);
+  assert.equal(res8.correctedText, "Aster Works helps you coordinate your team so you can spend less time organizing and more time doing.");
+
+  // Test 9: Word-level replacement within the same draft
+  const wordDraft = "Please use the command center to start.";
+  const findings9 = [
+    {
+      ruleId: "AW-002",
+      evidence: "command center",
+      offset: 15,
+      suggestedFix: "workspace",
+      decision: "accepted"
+    }
+  ];
+  const res9 = computeCorrectedContent(wordDraft, findings9);
+  assert.equal(res9.correctedText, "Please use the workspace to start.");
+
+  // Test 10: Multiple findings in the same paragraph
+  const multiDraft = "Use the command center. Check Aster Projects.";
+  const findings10 = [
+    {
+      ruleId: "AW-002",
+      evidence: "command center",
+      offset: 8,
+      suggestedFix: "workspace",
+      decision: "accepted"
+    },
+    {
+      ruleId: "AW-006",
+      evidence: "Aster Projects",
+      offset: 30,
+      suggestedFix: "GuardLoom Platform",
+      decision: "accepted"
+    }
+  ];
+  const res10 = computeCorrectedContent(multiDraft, findings10);
+  assert.equal(res10.correctedText, "Use the workspace. Check GuardLoom Platform.");
+
   console.log("All CorrectedContentPreview logic tests passed successfully!");
 }
 testCorrectedContentPreview();
